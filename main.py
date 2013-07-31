@@ -6,10 +6,24 @@ __author__ = 'khoatran'
 
 render = web.template.render('templates/')
 
+from auth import logout, login
+
 urls = (
     '/static/.*', 'static',  # this is used for development only
-    '/.*', 'compose',
+    '/login', login,
+    '/logout', logout,
+    '/compose', 'compose',
+    '/*', 'index',
 )
+
+app = web.application(urls, globals())
+session = web.session.Session(app, web.session.DiskStore('sessions'))
+
+
+def session_hook():
+    web.ctx.session = session
+
+app.add_processor(web.loadhook(session_hook))
 
 
 compose_form = form.Form(
@@ -24,11 +38,28 @@ compose_form = form.Form(
 )
 
 
+# view decorator
+def login_required(view):
+    def require_login(*args, **kwargs):
+        if web.ctx.session.get('logged_in', False):
+            return view(*args, **kwargs)
+        else:
+            raise web.redirect('/login')
+    return require_login
+
+
+class index:
+    def GET(self):
+        raise web.redirect('/compose')
+
+
 class compose:
+    @login_required
     def GET(self):
         form = compose_form()
         return render.compose(form)
 
+    @login_required
     def POST(self):
         form = compose_form()
         if not form.validates():
@@ -57,7 +88,6 @@ class static:
         raise web.seeother('static/' + web.ctx.path)
 
 
-app = web.application(urls, globals())
 application = app.wsgifunc()
 
 if __name__ == '__main__':
